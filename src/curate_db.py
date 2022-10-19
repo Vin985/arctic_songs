@@ -6,12 +6,13 @@ from pathlib import Path
 
 import pandas as pd
 import yaml
-from mouffet import file_utils
+from mouffet import file_utils, common_utils
 
 from flac_converter import FlacConverter
 
 arctic_root_path = Path(
-    "/mnt/win/UMoncton/OneDrive - Université de Moncton/Data/Reference/Arctic/Complete"
+    # "/mnt/win/UMoncton/OneDrive - Université de Moncton/Data/Reference/Arctic/Complete"
+    "/mnt/win/UMoncton/Doctorat/data/acoustic/reference/Final"
 )
 
 # summer_root_path = Path(
@@ -19,11 +20,15 @@ arctic_root_path = Path(
 # )
 
 dest_root = Path(
-    "/mnt/win/UMoncton/OneDrive - Université de Moncton/Data/Reference/Arctic/curated"
+    "/mnt/win/UMoncton/OneDrive - Université de Moncton/Data/Reference/Arctic/arctic_songs"
 )
 
 
 deployment_root_dir = Path("/mnt/win/UMoncton/OneDrive - Université de Moncton/Data")
+reference_classes_path = Path(
+    "/mnt/win/UMoncton/Doctorat/dev/dlbd/resources/reference_classes.csv"
+)
+
 
 sites = {
     "2018": [
@@ -52,7 +57,49 @@ sites = {
 }
 
 exclude_sites = {"2018": ["BARW_8", "ZACK_2", "IGLO_H"], "2019": ["PCIS_1", "CABA_3"]}
+exclude_files = {"2018": {"IGLO_E": ["5B344F30"]}}
 # exclude_sites = {"2018": [], "2019": []}
+
+COLUMNS_DROP = [
+    "Label",
+    "tag",
+    "Related",
+    "background",
+    "noise",
+    "LabelTimeStamp",
+    "Spec_NStep",
+    "Spec_NWin",
+    "LabelArea_DataPoints",
+]
+COLUMN_NAMES = {
+    "LabelStartTime_Seconds": "tag_start",
+    "LabelEndTime_Seconds": "tag_end",
+    "overlap": "overlap",
+    "Filename": "file_name",
+    "tag_global": "tag",
+    "related_global": "related",
+    "MinimumFreq_Hz": "frequency_min",
+    "MaximumFreq_Hz": "frequency_max",
+    "MaxAmp": "amplitude_max",
+    "MinAmp": "amplitude_min",
+    "MeanAmp": "amplitude_mean",
+    "AmpSD": "amplitude_sd",
+}
+COLUMN_ORDER = [
+    "id",
+    "file_name",
+    "tag",
+    "tag_start",
+    "tag_end",
+    "related",
+    "overlap",
+    "frequency_min",
+    "frequency_max",
+    "amplitude_min",
+    "amplitude_max",
+    "amplitude_mean",
+    "amplitude_sd",
+]
 
 
 def extract_infos_2019(file_path):
@@ -79,18 +126,53 @@ def extract_infos_2018(file_path):
     return infos
 
 
+def clean_tags(
+    tags_src_path,
+    audio_file_name,
+    ref_df,
+    column_names=COLUMN_NAMES,
+    to_drop=COLUMNS_DROP,
+):
+    new_df = None
+    if tags_src_path.exists():
+        tags_df = pd.read_csv(tags_src_path)
+        new_df = tags_df.merge(ref_df, left_on="Label", right_on="tag")
+        new_df = (
+            new_df.drop(
+                to_drop,
+                axis=1,
+            )
+            .rename(columns=column_names)
+            .round(4)
+            .sort_values(by=["tag_start"])[COLUMN_ORDER]
+        )
+        new_df["file_name"] = audio_file_name
+
+    else:
+        common_utils.print_warning(
+            f"Tag file {tags_src_path} does not exists. Creating empty one"
+        )
+        return
+
+    return new_df
+
+
 funcs = {"2018": extract_infos_2018, "2019": extract_infos_2019}
 
 compress = True
 overwrite = False
 dest_dir = dest_root
 if compress:
-    dest_dir /= "compressed"
+    dest_dir /= "data"
     converter = FlacConverter()
 
 
 years = [x for x in arctic_root_path.iterdir() if x.is_dir()]
+tag_list = []
 
+reference_df = pd.read_csv(reference_classes_path)[
+    ["tag", "tag_global", "related_global"]
+]
 
 tmp_infos = []
 for year in years:
@@ -109,6 +191,15 @@ for year in years:
                 .to_dict()
             )
             for wav_file in wav_list:
+                exclude = False
+                if year.name in exclude_files:
+                    if plot.name in exclude_files[year.name]:
+                        for excl in exclude_files[year.name][plot.name]:
+                            if excl in wav_file.stem:
+                                common_utils.print_warning(f"Excluding file {wav_file}")
+                                exclude = True
+                if exclude:
+                    continue
                 print(wav_file)
                 func = funcs[year.stem]
                 infos = func(wav_file)
@@ -130,26 +221,40 @@ for year in years:
                     ext = "flac"
                 else:
                     ext = "wav"
+                audio_file_name = f'{year.name}_{infos["plot"]}_{infos["full_date"].strftime("%Y%m%d-%H%M%S")}_{infos["rec_id"]}.{ext}'
                 wav_copy_dest = file_utils.ensure_path_exists(
-                    dest_dir
-                    / f'{year.name}_{infos["plot"]}_{infos["full_date"].strftime("%Y%m%d-%H%M%S")}_{infos["rec_id"]}.{ext}',
+                    dest_dir / audio_file_name,
                     is_file=True,
                 )
-                tags_path = wav_file.parent / f"{wav_file.stem}-sceneRect.csv"
-                tags_copy_dest = (
+                tags_src_path = wav_file.parent / f"{wav_file.stem}-sceneRect.csv"
+                tags_dest_path = (
                     dest_dir
                     / f'{year.name}_{infos["plot"]}_{infos["full_date"].strftime("%Y%m%d-%H%M%S")}_{infos["rec_id"]}-tags.csv'
                 )
-                # if not wav_copy_dest.exists() or overwrite:
-                #     if compress:
-                #         converter.encode(wav_file, wav_copy_dest)
-                #     else:
-                #         shutil.copy(wav_file, wav_copy_dest)
-                # if not tags_copy_dest.exists() or overwrite:
-                #     if tags_path.exists():
-                #         shutil.copy(tags_path, tags_copy_dest)
+
+                if not tags_dest_path.exists() or overwrite:
+                    tags_df = clean_tags(
+                        tags_src_path, audio_file_name, reference_df, COLUMN_NAMES
+                    )
+                    if tags_df is not None:
+                        tags_df.to_csv(tags_dest_path, index=False)
+                else:
+                    tags_df = pd.read_csv(tags_dest_path)
+
+                tag_list.append(tags_df)
+
+                if not wav_copy_dest.exists() or overwrite:
+                    if compress:
+                        converter.encode(wav_file, wav_copy_dest)
+                    else:
+                        shutil.copy(wav_file, wav_copy_dest)
 
 arctic_infos_df = pd.DataFrame(tmp_infos)
+
+all_tags = pd.concat(tag_list)
+
+#%%
+
 arctic_infos_df.to_csv(dest_root / "arctic_infos.csv", index=False)
 
 
@@ -161,8 +266,12 @@ arctic_summary["total_duration"] = (
     arctic_summary["file_duration"] * arctic_summary["n_files"]
 )
 for col in ["year", "site", "plot", "date"]:
-    arctic_summary[f"n_{col}s"] = len(arctic_infos_df[col].unique())
+    arctic_summary[f"n_unique_{col}s"] = len(arctic_infos_df[col].unique())
     arctic_summary[f"{col}s"] = arctic_infos_df[col].unique().tolist()
+
+arctic_summary["n_plots_total"] = (
+    arctic_infos_df.groupby(["year", "plot"]).count().shape[0]
+)
 
 arctic_summary["n_dates_by_year"] = {}
 
