@@ -10,6 +10,8 @@ from mouffet import file_utils, common_utils
 
 from flac_converter import FlacConverter
 
+from plotnine import *
+
 arctic_root_path = Path(
     # "/mnt/win/UMoncton/OneDrive - Université de Moncton/Data/Reference/Arctic/Complete"
     "/mnt/win/UMoncton/Doctorat/data/acoustic/reference/Final"
@@ -25,8 +27,12 @@ dest_root = Path(
 
 
 deployment_root_dir = Path("/mnt/win/UMoncton/OneDrive - Université de Moncton/Data")
+
 reference_classes_path = Path(
     "/mnt/win/UMoncton/Doctorat/dev/dlbd/resources/reference_classes.csv"
+)
+bird_code_reference = Path(
+    "/mnt/win/UMoncton/Doctorat/data/Bird codes/IBP-AOS-LIST22.csv"
 )
 
 
@@ -58,6 +64,7 @@ sites = {
 
 exclude_sites = {"2018": ["BARW_8", "ZACK_2", "IGLO_H"], "2019": ["PCIS_1", "CABA_3"]}
 exclude_files = {"2018": {"IGLO_E": ["5B344F30"]}}
+TAG_EXCLUDE = ["Wind", "Rain"]
 # exclude_sites = {"2018": [], "2019": []}
 
 COLUMNS_DROP = [
@@ -132,11 +139,13 @@ def clean_tags(
     ref_df,
     column_names=COLUMN_NAMES,
     to_drop=COLUMNS_DROP,
+    exclude_tags=TAG_EXCLUDE,
 ):
     new_df = None
     if tags_src_path.exists():
         tags_df = pd.read_csv(tags_src_path)
         new_df = tags_df.merge(ref_df, left_on="Label", right_on="tag")
+        new_df = new_df.loc[~new_df.tag.isin(exclude_tags)]
         new_df = (
             new_df.drop(
                 to_drop,
@@ -206,6 +215,8 @@ for year in years:
                 infos["plot"] = plot.name.replace("_", "-")
                 infos["year"] = year.name
                 infos["site"] = plot_info["Site"]
+                infos["deployment_start"] = plot_info["depl_start"]
+                infos["deployment_end"] = plot_info["depl_end"]
                 infos["latitude"] = plot_info["lat"]
                 infos["longitude"] = plot_info["lon"]
                 infos["substrate"] = plot_info["substrate"]
@@ -241,6 +252,8 @@ for year in years:
                 else:
                     tags_df = pd.read_csv(tags_dest_path)
 
+                tags_df["site"] = infos["site"]
+
                 tag_list.append(tags_df)
 
                 if not wav_copy_dest.exists() or overwrite:
@@ -253,9 +266,10 @@ arctic_infos_df = pd.DataFrame(tmp_infos)
 
 all_tags = pd.concat(tag_list)
 
-#%%
-
 arctic_infos_df.to_csv(dest_root / "arctic_infos.csv", index=False)
+all_tags.to_csv(dest_root / "all_tags.csv", index=False)
+
+#%%
 
 
 arctic_summary = {}
@@ -273,6 +287,10 @@ arctic_summary["n_plots_total"] = (
     arctic_infos_df.groupby(["year", "plot"]).count().shape[0]
 )
 
+
+arctic_summary["n_annotations"] = all_tags.shape[0]
+arctic_summary["n_classes"] = len(all_tags.tag.unique())
+
 arctic_summary["n_dates_by_year"] = {}
 
 with open(dest_root / "arctic_summary.yaml", "w") as summary_file:
@@ -280,6 +298,34 @@ with open(dest_root / "arctic_summary.yaml", "w") as summary_file:
 
 
 #%%
+
+# Tag details
+
+tag_summary = {}
+
+birds_df = pd.read_csv(bird_code_reference)
+
+
+tag_summary["n_annotations"] = all_tags.shape[0]
+tag_summary["n_classes"] = len(all_tags.tag.unique())
+
+tag_details = all_tags[["tag", "related"]].drop_duplicates().sort_values("tag")
+tag_details = (
+    tag_details.merge(
+        birds_df[["SPEC", "COMMONNAME", "SCINAME"]],
+        left_on="tag",
+        right_on="SPEC",
+        how="left",
+    )
+    .drop(columns=["SPEC"])
+    .rename(columns={"COMMONNAME": "common_name", "SCINAME": "latin_name"})
+)
+
+tag_details.to_csv(dest_root / "tag_details.csv", index=False)
+
+
+#%%
+
 
 # Table 1
 arctic_sites = arctic_infos_df[
@@ -304,8 +350,6 @@ with open(dest_root / "table1.txt", "w", encoding="utf8") as f:
 
 #%%
 
-
-from plotnine import *
 
 arctic_infos_df["year"] = arctic_infos_df.date.dt.year
 arctic_infos_df["julian"] = arctic_infos_df.date.dt.dayofyear
@@ -341,3 +385,74 @@ plt = (
 )
 
 plt
+
+#%%
+
+# Tags repartition
+
+tags_plot_df = all_tags.copy()
+tags_plot_df["tag"] = tags_plot_df["tag"].astype("category")
+tag_order = tags_plot_df["tag"].value_counts().index.tolist()
+tag_order.reverse()
+tags_plot_df["tag"].cat.set_categories(tag_order, inplace=True)
+
+
+all_tags_plot = (
+    ggplot(data=tags_plot_df, mapping=aes(x="tag", fill="site"))
+    + geom_bar()  # width=0.8, position=position_dodge(width=0.9))
+    + coord_flip()
+    + ylab("Class")
+    + xlab("Count")
+    # + scale_x_discrete(expand=(0, 0))
+    + scale_fill_brewer(type="div", palette="RdYlBu", direction=-1)
+    + scale_y_continuous(expand=(0, 0, 0.1, 0))
+    + theme_classic()
+    + theme(
+        # axis_text_y=element_text(vjust=1, hjust=1),
+        figure_size=(20, 8),
+        legend_position=((0.8, 0.3)),
+    )
+)
+
+all_tags_plot.save(dest_root / "tag_repartition.png", width=10, height=8)
+
+all_tags_plot
+
+
+#%%
+tags_plot_df["duration"] = tags_plot_df["tag_end"] - tags_plot_df["tag_start"]
+
+tags_dur_df = (
+    tags_plot_df.groupby(["site", "tag"]).agg({"duration": "sum"}).reset_index()
+)
+
+dur_order = (
+    tags_dur_df.groupby("tag")
+    .agg({"duration": "sum"})
+    .reset_index()
+    .sort_values("duration")
+    .tag.tolist()
+)
+
+tags_dur_df["tag"].cat.set_categories(dur_order, inplace=True)
+tags_dur_plot = (
+    ggplot(data=tags_dur_df, mapping=aes(x="tag", y="duration", fill="site"))
+    + geom_bar(stat="sum")  # width=0.8, position=position_dodge(width=0.9))
+    + coord_flip()
+    + theme_classic()
+    + ylab("Duration (s)")
+    + xlab("Class")
+    # + scale_x_discrete(expand=(0, 0))
+    + scale_y_continuous(expand=(0, 0, 0.1, 0))
+    + scale_fill_brewer(type="div", palette="RdYlBu", direction=-1)
+    + scale_size(guide=None)
+    + theme(
+        # axis_text_y=element_text(vjust=1, hjust=1),
+        figure_size=(20, 8),
+        legend_position=((0.8, 0.3)),
+    )
+)
+
+tags_dur_plot.save(dest_root / "tag_duration.png", width=10, height=8)
+
+tags_dur_plot
