@@ -25,6 +25,10 @@ dest_root = Path(
     "/mnt/win/UMoncton/OneDrive - Université de Moncton/Data/Reference/Arctic/arctic_songs"
 )
 
+arch_dest_root = dest_root / "DataS1"
+fig_dest_root = file_utils.ensure_path_exists(dest_root / "figures")
+tmp_dest_root = file_utils.ensure_path_exists(dest_root / "tmp")
+
 
 deployment_root_dir = Path("/mnt/win/UMoncton/OneDrive - Université de Moncton/Data")
 
@@ -170,9 +174,9 @@ funcs = {"2018": extract_infos_2018, "2019": extract_infos_2019}
 
 compress = True
 overwrite = False
-dest_dir = dest_root
+dest_dir = arch_dest_root
 if compress:
-    dest_dir /= "data"
+    dest_dir /= "audio_annots"
     converter = FlacConverter()
 
 
@@ -217,8 +221,8 @@ for year in years:
                 infos["site"] = plot_info["Site"]
                 infos["deployment_start"] = plot_info["depl_start"]
                 infos["deployment_end"] = plot_info["depl_end"]
-                infos["latitude"] = plot_info["lat"]
-                infos["longitude"] = plot_info["lon"]
+                infos["latitude"] = round(float(plot_info["lat"]), 5)
+                infos["longitude"] = round(float(plot_info["lon"]), 5)
                 infos["substrate"] = plot_info["substrate"]
                 infos["humidity"] = plot_info["humidity"]
                 if plot_info["depl_start"] and not pd.isna(plot_info["depl_start"]):
@@ -266,8 +270,8 @@ arctic_infos_df = pd.DataFrame(tmp_infos)
 
 all_tags = pd.concat(tag_list)
 
-arctic_infos_df.to_csv(dest_root / "arctic_infos.csv", index=False)
-all_tags.to_csv(dest_root / "all_tags.csv", index=False)
+arctic_infos_df.to_csv(tmp_dest_root / "arctic_infos.csv", index=False)
+all_tags.to_csv(tmp_dest_root / "all_tags.csv", index=False)
 
 #%%
 
@@ -293,7 +297,7 @@ arctic_summary["n_classes"] = len(all_tags.tag.unique())
 
 arctic_summary["n_dates_by_year"] = {}
 
-with open(dest_root / "arctic_summary.yaml", "w") as summary_file:
+with open(tmp_dest_root / "arctic_summary.yaml", "w") as summary_file:
     yaml.dump(arctic_summary, summary_file, default_flow_style=False)
 
 
@@ -321,7 +325,7 @@ tag_details = (
     .rename(columns={"COMMONNAME": "common_name", "SCINAME": "latin_name"})
 )
 
-tag_details.to_csv(dest_root / "tag_details.csv", index=False)
+tag_details.to_csv(arch_dest_root / "annotations_details.csv", index=False)
 
 
 #%%
@@ -329,12 +333,22 @@ tag_details.to_csv(dest_root / "tag_details.csv", index=False)
 
 # Table 1
 arctic_sites = arctic_infos_df[
-    ["plot", "year", "site", "latitude", "longitude", "substrate", "humidity"]
+    [
+        "plot",
+        "year",
+        "site",
+        "deployment_start",
+        "deployment_end",
+        "latitude",
+        "longitude",
+        "substrate",
+        "humidity",
+    ]
 ].drop_duplicates(subset=["year", "plot", "site"])
-arctic_sites.to_csv(dest_root / "arctic_sites.csv", index=False)
+arctic_sites.to_csv(arch_dest_root / "site_infos.csv", index=False)
 
 
-with open(dest_root / "table1.txt", "w", encoding="utf8") as f:
+with open(fig_dest_root / "table1.txt", "w", encoding="utf8") as f:
     f.write(
         arctic_sites.to_latex(
             columns=["year", "site", "plot", "latitude", "longitude"],
@@ -414,7 +428,7 @@ all_tags_plot = (
     )
 )
 
-all_tags_plot.save(dest_root / "tag_repartition.png", width=10, height=8)
+all_tags_plot.save(fig_dest_root / "tag_repartition.png", width=10, height=8)
 
 all_tags_plot
 
@@ -453,6 +467,6 @@ tags_dur_plot = (
     )
 )
 
-tags_dur_plot.save(dest_root / "tag_duration.png", width=10, height=8)
+tags_dur_plot.save(fig_dest_root / "tag_duration.png", width=10, height=8)
 
 tags_dur_plot
