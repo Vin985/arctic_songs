@@ -12,7 +12,7 @@ class FlacConverter:
         print(f"Compressing {file_path} into {file_dest}")
         self.total_bytes = 0
         self.output_file = open(file_dest, "wb")
-        data, sr = sf.read(str(file_path), dtype="int16", always_2d=True)
+        data, sr = sf.read(str(file_path), dtype="int16")
         encoder = pyflac.StreamEncoder(
             write_callback=self.encoder_callback,
             sample_rate=sr,
