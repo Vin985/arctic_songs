@@ -9,7 +9,7 @@ import yaml
 from mouffet import file_utils, common_utils
 
 from flac_converter import FlacConverter
-
+import pyflac
 from plotnine import *
 
 arctic_root_path = Path(
@@ -66,6 +66,17 @@ sites = {
     ],
 }
 
+sites_rename = {"Barrow": "Utqiaġvik", "Polar Bear Pass": "Nanuit Ittilinga"}
+
+plots_rename = {
+    "BARW_0": "UTQI-0",
+    "BARW_5": "UTQI-5",
+    "BARW_2": "UTQI-2",
+    "BARW_8": "UTQI-8",
+    "PBPS_1": "NAIT-1",
+    "PBPS_2": "NAIT-2",
+}
+
 exclude_sites = {"2018": ["BARW_8", "ZACK_2", "IGLO_H"], "2019": ["PCIS_1", "CABA_3"]}
 exclude_files = {"2018": {"IGLO_E": ["5B344F30"]}}
 TAG_EXCLUDE = ["Wind", "Rain"]
@@ -83,8 +94,8 @@ COLUMNS_DROP = [
     "LabelArea_DataPoints",
 ]
 COLUMN_NAMES = {
-    "LabelStartTime_Seconds": "tag_start",
-    "LabelEndTime_Seconds": "tag_end",
+    "LabelStartTime_Seconds": "start",
+    "LabelEndTime_Seconds": "end",
     "overlap": "overlap",
     "Filename": "file_name",
     "tag_global": "tag",
@@ -100,8 +111,8 @@ COLUMN_ORDER = [
     "id",
     "file_name",
     "tag",
-    "tag_start",
-    "tag_end",
+    "start",
+    "end",
     "related",
     "overlap",
     "frequency_min",
@@ -157,7 +168,7 @@ def clean_tags(
             )
             .rename(columns=column_names)
             .round(4)
-            .sort_values(by=["tag_start"])[COLUMN_ORDER]
+            .sort_values(by=["start"])[COLUMN_ORDER]
         )
         new_df["file_name"] = audio_file_name
 
@@ -216,9 +227,16 @@ for year in years:
                 print(wav_file)
                 func = funcs[year.stem]
                 infos = func(wav_file)
-                infos["plot"] = plot.name.replace("_", "-")
+                if plot.name in plots_rename:
+                    infos["plot"] = plots_rename[plot.name]
+                else:
+                    infos["plot"] = plot.name.replace("_", "-")
+
                 infos["year"] = year.name
-                infos["site"] = plot_info["Site"]
+                site = plot_info["Site"]
+                if site in sites_rename:
+                    site = sites_rename[site]
+                infos["site"] = site
                 infos["deployment_start"] = plot_info["depl_start"]
                 infos["deployment_end"] = plot_info["depl_end"]
                 infos["latitude"] = round(float(plot_info["lat"]), 5)
@@ -262,7 +280,9 @@ for year in years:
 
                 if not wav_copy_dest.exists() or overwrite:
                     if compress:
-                        converter.encode(wav_file, wav_copy_dest)
+                        print(f"Compressing {wav_file} into {wav_copy_dest}")
+                        flac_converter = pyflac.FileEncoder(wav_file, wav_copy_dest)
+                        flac_converter.process()
                     else:
                         shutil.copy(wav_file, wav_copy_dest)
 
@@ -332,38 +352,52 @@ tag_details.to_csv(arch_dest_root / "annotations_details.csv", index=False)
 
 
 # Table 1
-arctic_sites = arctic_infos_df[
-    [
-        "plot",
-        "year",
-        "site",
-        "deployment_start",
-        "deployment_end",
-        "latitude",
-        "longitude",
-        "substrate",
-        "humidity",
+arctic_sites = (
+    arctic_infos_df[
+        [
+            "plot",
+            "year",
+            "site",
+            "deployment_start",
+            "deployment_end",
+            "latitude",
+            "longitude",
+            "substrate",
+            "humidity",
+        ]
     ]
-].drop_duplicates(subset=["year", "plot", "site"])
+    .drop_duplicates(subset=["year", "plot", "site"])
+    .reset_index(drop=True)
+)
 arctic_sites.to_csv(arch_dest_root / "site_infos.csv", index=False)
 
+tmp_df = arctic_sites[["year", "site", "plot", "latitude", "longitude"]].reset_index(
+    drop=True
+)
+tmp_df = tmp_df.rename(
+    columns={
+        "year": "Year",
+        "site": "Site",
+        "plot": "Plot",
+        "latitude": "Latitude",
+        "longitude": "Longitude",
+    }
+)
+# with open(fig_dest_root / "table1.txt", "w", encoding="utf8") as f:
 
-with open(fig_dest_root / "table1.txt", "w", encoding="utf8") as f:
-    f.write(
-        arctic_sites.to_latex(
-            columns=["year", "site", "plot", "latitude", "longitude"],
-            index=False,
-            column_format="ccccc",
-            caption="Test caption",
-            header=["Year", "Site", "Plot", "Latitude", "Longitude"],
-            position="h!",
-            label="table_sites",
-        )
-    )
+tmp_df.style.hide(axis="index").to_latex(
+    buf=fig_dest_root / "table1.txt",
+    column_format="ccccc",
+    caption="Study site locations, years, and plot names where acoustic recordings were collected across the Arctic",
+    hrules=True,
+    # header=["Year", "Site", "Plot", "Latitude", "Longitude"],
+    position="h!",
+    label="table_sites",
+)
 
 
 #%%
-
+legend_title_margin = {"b": 15}
 
 arctic_infos_df["year"] = arctic_infos_df.date.dt.year
 arctic_infos_df["julian"] = arctic_infos_df.date.dt.dayofyear
@@ -377,8 +411,8 @@ plot_df = (
 )
 
 plot_df["plot"] = plot_df["plot"].astype("category")
-plot_df["plot"].cat.set_categories(
-    plot_df["plot"].cat.categories.sort_values(ascending=False), inplace=True
+plot_df["plot"] = plot_df["plot"].cat.set_categories(
+    plot_df["plot"].cat.categories.sort_values(ascending=False)
 )
 
 
@@ -394,10 +428,16 @@ plt = (
     + xlab("Day")
     + ylab("Plot")
     + facet_grid(". ~ year")
-    + theme(legend_position="none")
+    # + theme(legend_position="none")
+    + scale_colour_discrete(
+        guide=False,
+    )
+    + scale_size_continuous(name="Number of\nrecordings")
     + scale_x_continuous(labels=label_x)
+    + theme(legend_title=element_text(margin=legend_title_margin))
 )
 
+plt.save(fig_dest_root / "plots_days.png", width=10, height=8)
 plt
 
 #%%
@@ -415,16 +455,19 @@ all_tags_plot = (
     ggplot(data=tags_plot_df, mapping=aes(x="tag", fill="site"))
     + geom_bar()  # width=0.8, position=position_dodge(width=0.9))
     + coord_flip()
-    + ylab("Class")
-    + xlab("Count")
+    + ylab("Count")
+    + xlab("Class")
     # + scale_x_discrete(expand=(0, 0))
-    + scale_fill_brewer(type="div", palette="RdYlBu", direction=-1)
+    + scale_fill_brewer(
+        name="Deployment site", type="div", palette="RdYlBu", direction=-1
+    )
     + scale_y_continuous(expand=(0, 0, 0.1, 0))
     + theme_classic()
     + theme(
         # axis_text_y=element_text(vjust=1, hjust=1),
         figure_size=(20, 8),
         legend_position=((0.8, 0.3)),
+        legend_title=element_text(margin=legend_title_margin),
     )
 )
 
@@ -434,7 +477,7 @@ all_tags_plot
 
 
 #%%
-tags_plot_df["duration"] = tags_plot_df["tag_end"] - tags_plot_df["tag_start"]
+tags_plot_df["duration"] = tags_plot_df["end"] - tags_plot_df["start"]
 
 tags_dur_df = (
     tags_plot_df.groupby(["site", "tag"]).agg({"duration": "sum"}).reset_index()
@@ -448,7 +491,8 @@ dur_order = (
     .tag.tolist()
 )
 
-tags_dur_df["tag"].cat.set_categories(dur_order, inplace=True)
+tags_dur_df["tag"] = tags_dur_df["tag"].cat.set_categories(dur_order)
+tags_dur_df.duration = tags_dur_df.duration.astype("float")
 tags_dur_plot = (
     ggplot(data=tags_dur_df, mapping=aes(x="tag", y="duration", fill="site"))
     + geom_bar(stat="sum")  # width=0.8, position=position_dodge(width=0.9))
@@ -458,12 +502,15 @@ tags_dur_plot = (
     + xlab("Class")
     # + scale_x_discrete(expand=(0, 0))
     + scale_y_continuous(expand=(0, 0, 0.1, 0))
-    + scale_fill_brewer(type="div", palette="RdYlBu", direction=-1)
+    + scale_fill_brewer(
+        name="Deployment site", type="div", palette="RdYlBu", direction=-1
+    )
     + scale_size(guide=None)
     + theme(
         # axis_text_y=element_text(vjust=1, hjust=1),
         figure_size=(20, 8),
         legend_position=((0.8, 0.3)),
+        legend_title=element_text(margin=legend_title_margin),
     )
 )
 
