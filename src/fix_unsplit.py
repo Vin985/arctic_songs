@@ -4,13 +4,8 @@ from pathlib import Path
 import pandas as pd
 from pysoundplayer.audio import Audio
 
+
 audio_files = [
-    # Path(
-    #     "/mnt/win/UMoncton/OneDrive - Université de Moncton/Data/Reference/Arctic/Complete/2019/PBPS_1/20190701_080000.WAV"
-    # ),
-    # Path(
-    #     "/mnt/win/UMoncton/OneDrive - Université de Moncton/Data/Reference/Arctic/Complete/2019/PBPS_1/20190626_160000.WAV"
-    # ),
     Path(
         "/mnt/win/UMoncton/OneDrive - Université de Moncton/Data/Reference/Arctic/Complete/2019/PBPS_2/20190622_160000.WAV"
     ),
