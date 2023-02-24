@@ -35,7 +35,7 @@ tmp_dest_root = file_utils.ensure_path_exists(dest_root / "tmp")
 archive_dest_root = dest_root / "DataS1"
 arctic_infos_df = pd.read_csv(tmp_dest_root / "arctic_infos.csv")
 all_tags = pd.read_csv(tmp_dest_root / "all_tags.csv")
-bird_code_reference = Path("../resources/IBP-AOS-LIST22.csv")
+bird_code_reference = Path("resources/IBP-AOS-LIST22.csv")
 fig_dest_root = file_utils.ensure_path_exists(dest_root / "figures")
 tmp_dest_root = file_utils.ensure_path_exists(dest_root / "tmp")
 
