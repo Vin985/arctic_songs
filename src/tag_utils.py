@@ -25,10 +25,6 @@ COLUMN_NAMES = {
     "related_global": "related",
     "MinimumFreq_Hz": "frequency_min",
     "MaximumFreq_Hz": "frequency_max",
-    # "MaxAmp": "amplitude_max",
-    # "MinAmp": "amplitude_min",
-    # "MeanAmp": "amplitude_mean",
-    # "AmpSD": "amplitude_sd",
 }
 COLUMN_ORDER = [
     "id",
@@ -40,10 +36,6 @@ COLUMN_ORDER = [
     "overlap",
     "frequency_min",
     "frequency_max",
-    # "amplitude_min",
-    # "amplitude_max",
-    # "amplitude_mean",
-    # "amplitude_sd",
 ]
 
 TAG_EXCLUDE = ["Wind", "Rain"]
