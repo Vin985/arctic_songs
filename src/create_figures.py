@@ -85,7 +85,7 @@ tag_details = (
         how="left",
     )
     .drop(columns=["SPEC"])
-    .rename(columns={"COMMONNAME": "common_name", "SCINAME": "latin_name"})
+    .rename(columns={"COMMONNAME": "vernacular_name", "SCINAME": "scientific_name"})
 )
 
 tag_details.to_csv(archive_dest_root / "annotations_details.csv", index=False)
@@ -94,6 +94,22 @@ tag_details.to_csv(archive_dest_root / "annotations_details.csv", index=False)
 #%%
 
 
+biomes = {
+    "Utqiaġvik": "High Arctic",
+    "Colville River": "Low Arctic",
+    "East Bay": "High Arctic",
+    "Igloolik": "High Arctic",
+    "Nanuit Ittilinga": "High Arctic",
+    "Zackenberg": "High Arctic",
+}
+subzone = {
+    "Utqiaġvik": "C",
+    "Colville River": "D",
+    "East Bay": "C",
+    "Igloolik": "C",
+    "Nanuit Ittilinga": "B",
+    "Zackenberg": "C",
+}
 # Table 1
 arctic_sites = (
     arctic_infos_df[
@@ -112,8 +128,22 @@ arctic_sites = (
     .drop_duplicates(subset=["year", "plot", "site"])
     .reset_index(drop=True)
 )
-arctic_sites.to_csv(archive_dest_root / "site_infos.csv", index=False)
+tmp_arctic_sites = arctic_sites.copy()
+tmp_arctic_sites = tmp_arctic_sites.rename(
+    columns={
+        "latitude": "decimal_latitude",
+        "longitude": "decimal_longitude",
+        "substrate": "deployment_substrate",
+    }
+)
+for k, v in biomes.items():
+    tmp_arctic_sites.loc[tmp_arctic_sites.site == k, "bioclimate_zone"] = v
+for k, v in subzone.items():
+    tmp_arctic_sites.loc[tmp_arctic_sites.site == k, "bioclimate_subzone"] = v
 
+tmp_arctic_sites.to_csv(archive_dest_root / "site_infos.csv", index=False)
+
+#%%
 tmp_df = arctic_sites[["year", "site", "plot", "latitude", "longitude"]].reset_index(
     drop=True
 )
