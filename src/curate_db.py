@@ -111,6 +111,7 @@ for year in years:
             # * Compile information about the site from the deployment information
             plot_infos = {}
             plot_infos["site"] = site
+            plot_infos["recorder_id"] = plot_depl_info["rec_id"]
             plot_infos["deployment_start"] = plot_depl_info["depl_start"]
             plot_infos["deployment_end"] = plot_depl_info["depl_end"]
             plot_infos["latitude"] = round(float(plot_depl_info["lat"]), 5)

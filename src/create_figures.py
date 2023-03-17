@@ -15,6 +15,7 @@ from plotnine import (
     geom_point,
     ggplot,
     scale_color_discrete,
+    scale_color_cmap_d,
     scale_fill_brewer,
     scale_size,
     scale_size_continuous,
@@ -117,6 +118,7 @@ arctic_sites = (
             "plot",
             "year",
             "site",
+            "recorder_id",
             "deployment_start",
             "deployment_end",
             "latitude",
@@ -207,6 +209,7 @@ plt = (
         guide=False,
     )
     + scale_size_continuous(name="Number of\nrecordings")
+    + scale_color_cmap_d(guide=None)
     + scale_x_continuous(labels=label_x)
     + theme(legend_title=element_text(margin=legend_title_margin))
 )
